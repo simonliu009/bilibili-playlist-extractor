@@ -1,0 +1,28 @@
+{
+  "manifest_version": 3,
+  "name": "B站视频合辑导出",
+  "version": "1.0",
+  "description": "导出B站视频/合辑信息为Markdown格式",
+  "icons": {
+    "16": "icon16.png",
+    "48": "icon48.png",
+    "128": "icon128.png"
+  },
+  "permissions": [
+    "contextMenus",
+    "clipboardWrite",
+    "activeTab"
+  ],
+  "host_permissions": [
+    "https://api.bilibili.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["*://*.bilibili.com/*"],
+      "js": ["content.js"]
+    }
+  ]
+} 
