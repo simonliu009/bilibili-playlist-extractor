@@ -14,6 +14,58 @@ function getBvidFromUrl(url) {
   return match ? match[0] : null;
 }
 
+// URL清洗函数
+function cleanUrl(url) {
+  try {
+    const urlObj = new URL(url);
+    // 需要移除的参数列表
+    const paramsToRemove = [
+      'spm',
+      'spm_id_from',  // B站特有
+      'vd_source',    // B站特有
+      'utm_source',
+      'utm_medium',
+      'utm_campaign',
+      'utm_term',
+      'utm_content'
+    ];
+    
+    // 获取所有查询参数
+    const searchParams = new URLSearchParams(urlObj.search);
+    let hasPromoParam = false;
+    
+    // 找到推广参数在查询字符串中的位置
+    let promoParamIndex = -1;
+    for (const param of paramsToRemove) {
+      const fullParam = `${param}=`;
+      const index = url.indexOf(fullParam);
+      if (index !== -1 && (url[index - 1] === '?' || url[index - 1] === '&')) {
+        promoParamIndex = index;
+        hasPromoParam = true;
+        break;
+      }
+    }
+    
+    // 如果找到推广参数，截取到该参数之前的部分
+    if (hasPromoParam) {
+      const paramStart = url.lastIndexOf('?', promoParamIndex);
+      if (paramStart === promoParamIndex - 1) {
+        // 如果推广参数是第一个参数，直接返回不带参数的URL
+        return url.substring(0, paramStart);
+      } else {
+        // 如果推广参数不是第一个参数，保留之前的参数
+        return url.substring(0, url.lastIndexOf('&', promoParamIndex));
+      }
+    }
+    
+    // 如果不存在需要移除的参数，保持原URL不变
+    return url;
+  } catch (e) {
+    console.error('URL清洗失败:', e);
+    return url;
+  }
+}
+
 // 处理视频信息
 async function processVideoInfo(bvid) {
   try {
@@ -38,7 +90,8 @@ async function processVideoInfo(bvid) {
       // 合辑视频 - 去掉标题行
       markdown = ""; 
       videoInfo.episodes.forEach(episode => {
-        markdown += `- [${episode.title}](https://www.bilibili.com/video/${episode.bvid})\n`;
+        const cleanedUrl = cleanUrl(`https://www.bilibili.com/video/${episode.bvid}`);
+        markdown += `- [${episode.title}](${cleanedUrl})\n`;
       });
 
       // 生成显示消息 - 移除标题
@@ -52,7 +105,8 @@ async function processVideoInfo(bvid) {
       }
     } else {
       // 单个视频部分保持不变
-      markdown = `[${videoInfo.title}](${window.location.href})`;
+      const cleanedUrl = cleanUrl(window.location.href);
+      markdown = `[${videoInfo.title}](${cleanedUrl})`;
       displayMessage = `复制成功！\n\n${markdown}`;
     }
 
