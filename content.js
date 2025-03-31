@@ -69,6 +69,27 @@ function cleanUrl(url) {
 // 处理视频信息
 async function processVideoInfo(bvid) {
   try {
+    // 获取专辑名称
+    const albumTitleElement = document.querySelector('a.title.jumpable[title]');
+    const albumTitle = albumTitleElement ? albumTitleElement.title : '';
+
+    // 获取作者信息
+    const authorMeta = document.querySelector('meta[name="author"]');
+    const author = authorMeta ? authorMeta.content : '';
+
+    // 构建专辑和作者信息字符串
+    const albumAndAuthor = albumTitle ? `${albumTitle} - ${author}\n` : '';
+
+    if (albumTitle && author) {
+      showMessage(`专辑名称: ${albumTitle}\n作者: ${author}`, false, 3000);
+    } else if (albumTitle) {
+      showMessage(`专辑名称: ${albumTitle}`, false, 3000);
+    } else if (author) {
+      showMessage(`作者: ${author}`, false, 3000);
+    } else {
+      showMessage("未能获取专辑名称或作者信息", true, 3000);
+    }
+
     // 显示加载提示
     showMessage("获取视频信息中...", false, 10000);
 
@@ -88,7 +109,7 @@ async function processVideoInfo(bvid) {
 
     if (videoInfo.episodes) {
       // 合辑视频 - 去掉标题行
-      markdown = ""; 
+      markdown = albumAndAuthor;
       videoInfo.episodes.forEach(episode => {
         const cleanedUrl = cleanUrl(`https://www.bilibili.com/video/${episode.bvid}`);
         markdown += `- [${episode.title}](${cleanedUrl})\n`;
@@ -96,7 +117,11 @@ async function processVideoInfo(bvid) {
 
       // 生成显示消息 - 移除标题
       const previewEpisodes = videoInfo.episodes.slice(0, 2);
-      displayMessage = `复制成功！\n\n`;
+      if (videoInfo.episodes.length === 0) {
+        displayMessage = "该合辑没有视频信息";
+      } else {
+        displayMessage = `视频信息已复制到剪贴板！\n\n${albumAndAuthor}`;
+      }
       previewEpisodes.forEach(episode => {
         displayMessage += `- ${episode.title}\n`;
       });
@@ -106,13 +131,19 @@ async function processVideoInfo(bvid) {
     } else {
       // 单个视频部分保持不变
       const cleanedUrl = cleanUrl(window.location.href);
-      markdown = `[${videoInfo.title}](${cleanedUrl})`;
-      displayMessage = `复制成功！\n\n${markdown}`;
-    }
+      markdown = `[${videoInfo.title} - ${author}](${cleanedUrl})`;
+      displayMessage = `视频信息已复制到剪贴板！\n\n${markdown}`;
 
+    }
+    if (displayMessage) {
+      showMessage(displayMessage);
+    }
+    // else {
+    //   showMessage("未能获取视频信息", true);
+    // }
     // 复制到剪贴板
     await navigator.clipboard.writeText(markdown);
-    showMessage(displayMessage);
+    // showMessage(displayMessage);
   } catch (error) {
     console.error('处理视频信息失败:', error);
     showMessage("处理视频信息失败", true);
@@ -120,7 +151,7 @@ async function processVideoInfo(bvid) {
 }
 
 // 显示消息的函数，添加持续时间参数
-function showMessage(text, isError = false, duration = 2000) {
+function showMessage(text, isError = false, duration = 5000) {
   // 移除已存在的消息
   const existingMessage = document.querySelector('.copy-message');
   if (existingMessage) {
