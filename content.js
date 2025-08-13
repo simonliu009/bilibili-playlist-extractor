@@ -66,6 +66,32 @@ function cleanUrl(url) {
   }
 }
 
+// 从页面DOM中提取分集信息
+function extractEpisodesFromDOM() {
+  // 尝试从页面DOM中提取分集信息
+  const episodeElements = document.querySelectorAll('.video-pod__item[data-key]');
+  
+  if (episodeElements.length > 0) {
+    const episodes = [];
+    episodeElements.forEach(element => {
+      const dataKey = element.getAttribute('data-key');
+      const titleElement = element.querySelector('.title-txt');
+      const title = titleElement ? titleElement.textContent.trim() : '';
+      
+      if (dataKey && title) {
+        episodes.push({
+          bvid: `BV${dataKey}`, // 使用data-key作为BV号的一部分
+          title: title,
+          aid: dataKey // 保存原始的aid
+        });
+      }
+    });
+    return episodes;
+  }
+  
+  return null;
+}
+
 // 处理视频信息
 async function processVideoInfo(bvid) {
   try {
@@ -93,6 +119,46 @@ async function processVideoInfo(bvid) {
     // 显示加载提示
     showMessage("获取视频信息中...", false, 10000);
 
+    // 首先尝试从DOM中提取分集信息
+    let episodes = extractEpisodesFromDOM();
+    let videoTitle = '';
+    
+    if (episodes && episodes.length > 0) {
+      // 如果从DOM中成功提取到分集信息，使用DOM数据
+      console.log('使用DOM提取的分集信息:', episodes.length, '个视频');
+      
+      // 获取当前视频标题
+      const titleMeta = document.querySelector('meta[name="title"]');
+      videoTitle = titleMeta ? titleMeta.content : albumTitle || '未知标题';
+      
+      let markdown = albumAndAuthor;
+      let displayMessage = `视频信息已复制到剪贴板！\n\n${albumAndAuthor}`;
+      
+      episodes.forEach(episode => {
+        // 构建视频URL，使用aid作为参数
+        const videoUrl = `https://www.bilibili.com/video/BV${episode.aid}`;
+        const cleanedUrl = cleanUrl(videoUrl);
+        markdown += `- [${episode.title}](${cleanedUrl})\n`;
+      });
+      
+      // 生成显示消息
+      const previewEpisodes = episodes.slice(0, 2);
+      previewEpisodes.forEach(episode => {
+        displayMessage += `- ${episode.title}\n`;
+      });
+      if (episodes.length > 2) {
+        displayMessage += `...\n共 ${episodes.length} 个视频`;
+      }
+      
+      // 复制到剪贴板
+      await navigator.clipboard.writeText(markdown);
+      showMessage(displayMessage);
+      return;
+    }
+    
+    // 如果DOM中没有找到分集信息，回退到API方式
+    console.log('DOM中未找到分集信息，使用API获取');
+    
     // 获取视频信息
     const videoInfo = await chrome.runtime.sendMessage({
       action: "fetchVideoInfo",
@@ -188,4 +254,4 @@ function showMessage(text, isError = false, duration = 5000) {
       }
     }, 300);
   }, duration);
-} 
+}
