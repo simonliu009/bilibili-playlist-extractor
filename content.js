@@ -26,6 +26,7 @@ let lastMiddleClickTime = 0;
 let middleClickCount = 0;
 const CLICK_THRESHOLD = 300;
 let clickTimer = null;
+const DEBUG_BILI_DESC = true;
 
 document.addEventListener(
   "mouseup",
@@ -198,16 +199,154 @@ function getUploadDate() {
   return dateMatch ? dateMatch[1] : "";
 }
 
-function getPageDescription() {
-  const descriptionMeta =
-    document.querySelector('meta[itemprop="description"]') ||
-    document.querySelector('meta[name="description"]');
+async function getPageDescription() {
+  if (DEBUG_BILI_DESC) {
+    console.log("[BiliExt] window.__INITIAL_STATE__ =", window.__INITIAL_STATE__);
+  }
 
-  if (!descriptionMeta || !descriptionMeta.content) {
+  const initialDesc = window.__INITIAL_STATE__?.videoData?.desc;
+  if (typeof initialDesc === "string" && initialDesc.trim()) {
+    if (DEBUG_BILI_DESC) {
+      console.log("[BiliExt] window.__INITIAL_STATE__.videoData.desc =", initialDesc.trim());
+    }
+    return initialDesc.trim();
+  }
+
+  const extractedDesc = extractDescFromHtml();
+  if (extractedDesc) {
+    return extractedDesc;
+  }
+
+  const fetchedDesc = await extractDescFromFetchedPage();
+  if (fetchedDesc) {
+    return fetchedDesc;
+  }
+
+  return "";
+}
+
+function extractDescFromText(text, bvid, sourceLabel) {
+  if (!text || !text.includes('"videoData"') || !text.includes('"desc"')) {
     return "";
   }
 
-  return descriptionMeta.content.trim();
+  const escapedBvid = bvid ? bvid.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") : "";
+  const bvidPatterns = bvid
+    ? [
+        new RegExp(`"bvid"\\s*:\\s*"${escapedBvid}"`),
+        new RegExp(`"bvid":"${escapedBvid}"`)
+      ]
+    : [];
+
+  let bvidIndex = -1;
+  if (bvidPatterns.length > 0) {
+    for (const pattern of bvidPatterns) {
+      const match = text.match(pattern);
+      if (match && typeof match.index === "number") {
+        bvidIndex = match.index;
+        break;
+      }
+    }
+
+    if (bvidIndex < 0) {
+      return "";
+    }
+  }
+
+  const videoDataIndex = text.indexOf('"videoData"');
+  if (videoDataIndex < 0) {
+    return "";
+  }
+
+  const anchorIndex = bvidIndex >= 0 ? bvidIndex : videoDataIndex;
+  const start = Math.max(0, Math.min(videoDataIndex, anchorIndex) - 4000);
+  const end = Math.min(text.length, Math.max(videoDataIndex, anchorIndex) + 50000);
+  const searchArea = text.slice(start, end);
+
+  if (DEBUG_BILI_DESC) {
+    console.log(`[BiliExt] candidate ${sourceLabel} =`, searchArea.slice(0, 1600));
+  }
+
+  const videoDataMatch = searchArea.match(
+    /"videoData"\s*:\s*\{([\s\S]*?)"desc_v2"\s*:|\"videoData\"\s*:\s*\{([\s\S]*?)"state"\s*:/
+  );
+  const searchChunk = videoDataMatch ? videoDataMatch[1] || videoDataMatch[2] : searchArea;
+  const descMatch = searchChunk.match(/"desc"\s*:\s*"((?:[^"\\]|\\.)*)"/);
+
+  if (!descMatch || !descMatch[1]) {
+    return "";
+  }
+
+  try {
+    const raw = JSON.parse(`"${descMatch[1]}"`);
+    if (DEBUG_BILI_DESC) {
+      console.log(`[BiliExt] extracted desc from ${sourceLabel} =`, raw);
+    }
+    return raw.trim();
+  } catch (error) {
+    console.warn(`解析B站视频描述失败(${sourceLabel}):`, error);
+    return "";
+  }
+}
+
+function extractDescFromHtml() {
+  const scripts = document.querySelectorAll("script");
+  const bvid = getBvidFromUrl(window.location.href);
+
+  for (const script of scripts) {
+    const text = script.textContent || "";
+    const desc = extractDescFromText(text, bvid, "script");
+    if (desc) {
+      return desc;
+    }
+  }
+
+  const pageHtmlDesc = extractDescFromText(document.documentElement.innerHTML, bvid, "page html");
+  if (pageHtmlDesc) {
+    return pageHtmlDesc;
+  }
+
+  if (DEBUG_BILI_DESC) {
+    console.log("[BiliExt] no desc extracted from html");
+  }
+
+  return "";
+}
+
+async function extractDescFromFetchedPage() {
+  try {
+    const response = await fetch(window.location.href, {
+      credentials: "include",
+      cache: "no-store"
+    });
+    if (!response.ok) {
+      if (DEBUG_BILI_DESC) {
+        console.log("[BiliExt] fetch page html failed =", response.status);
+      }
+      return "";
+    }
+
+    const html = await response.text();
+    const bvid = getBvidFromUrl(window.location.href);
+    if (DEBUG_BILI_DESC) {
+      const anchor = bvid ? html.indexOf(bvid) : -1;
+      const videoDataIndex = html.indexOf('"videoData"');
+      const pivot = anchor >= 0 ? anchor : videoDataIndex;
+      if (pivot >= 0) {
+        const start = Math.max(0, pivot - 1200);
+        const end = Math.min(html.length, pivot + 4000);
+        console.log("[BiliExt] fetched html snippet =", html.slice(start, end));
+      } else {
+        console.log("[BiliExt] fetched html snippet =", html.slice(0, 4000));
+      }
+    }
+    return extractDescFromText(html, bvid, "fetched html");
+  } catch (error) {
+    if (DEBUG_BILI_DESC) {
+      console.warn("[BiliExt] fetch page html error =", error);
+    }
+    return "";
+  }
 }
 
 async function handleDoubleMiddleClick() {
@@ -216,7 +355,7 @@ async function handleDoubleMiddleClick() {
     const url = getCleanedCurrentUrl();
     const author = getPageAuthor();
     const uploadDate = getUploadDate();
-    const description = isBilibiliVideoPage() ? getPageDescription() : "";
+    const description = isBilibiliVideoPage() ? await getPageDescription() : "";
 
     const baseTitle = uploadDate ? `${uploadDate} ${title}` : title;
     let { markdownText } = getDisplayTextAndMarkdown(baseTitle, url, author);
