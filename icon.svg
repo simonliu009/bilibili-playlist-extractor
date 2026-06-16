@@ -1,18 +1,43 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="128" height="128" viewBox="0 0 128 128">
   <defs>
+    <linearGradient id="bg" x1="8" y1="8" x2="120" y2="120" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FF4D7D"/>
+      <stop offset="0.5" stop-color="#FF8A3D"/>
+      <stop offset="1" stop-color="#FFD13D"/>
+    </linearGradient>
+    <linearGradient id="pageBack" x1="24" y1="20" x2="92" y2="104" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#2FD8FF"/>
+      <stop offset="1" stop-color="#4F78FF"/>
+    </linearGradient>
+    <linearGradient id="pageFront" x1="28" y1="28" x2="100" y2="112" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#FFFFFF"/>
+      <stop offset="1" stop-color="#FFF5F8"/>
+    </linearGradient>
     <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
-      <feGaussianBlur in="SourceAlpha" stdDeviation="2"/>
-      <feOffset dx="0" dy="2"/>
-      <feComponentTransfer>
-        <feFuncA type="linear" slope="0.3"/>
-      </feComponentTransfer>
-      <feMerge>
-        <feMergeNode/>
-        <feMergeNode in="SourceGraphic"/>
-      </feMerge>
+      <feDropShadow dx="0" dy="6" stdDeviation="6" flood-color="#6D1030" flood-opacity="0.28"/>
     </filter>
   </defs>
-  <rect width="128" height="128" rx="12" fill="#FB7299" filter="url(#shadow)"/>
-  <path d="M85.2 46.5H42.8c-1.5 0-2.7 1.2-2.7 2.7v29.6c0 1.5 1.2 2.7 2.7 2.7h42.4c1.5 0 2.7-1.2 2.7-2.7V49.2c0-1.5-1.2-2.7-2.7-2.7zM51.7 66.5v-8.9l7.5 4.4-7.5 4.5zm22.1-8.9v8.9l-7.5-4.5 7.5-4.4z" fill="white"/>
-</svg> 
+
+  <rect width="128" height="128" rx="26" fill="url(#bg)"/>
+  <circle cx="102" cy="26" r="12" fill="#FFFFFF" opacity="0.18"/>
+  <circle cx="24" cy="104" r="10" fill="#00E5FF" opacity="0.22"/>
+
+  <g filter="url(#shadow)">
+    <rect x="20" y="38" width="74" height="84" rx="16" fill="url(#pageBack)"/>
+    <rect x="42" y="12" width="74" height="84" rx="16" fill="url(#pageFront)"/>
+  </g>
+
+  <g>
+    <rect x="42" y="22" width="40" height="8" rx="4" fill="#FFD1DE"/>
+    <rect x="42" y="38" width="30" height="8" rx="4" fill="#E8EEF8"/>
+    <rect x="42" y="54" width="34" height="8" rx="4" fill="#E8EEF8"/>
+    <rect x="42" y="70" width="22" height="8" rx="4" fill="#E8EEF8"/>
+    <rect x="76" y="22" width="14" height="14" rx="4" fill="#FF4D7D"/>
+    <path d="M80 25.5L86 29.5L80 33.5V25.5Z" fill="#FFFFFF"/>
+  </g>
+
+  <text x="64" y="80" text-anchor="middle" font-family="Arial Black, Arial, sans-serif" font-size="90" font-weight="900" fill="#FFFFFF" stroke="#23204A" stroke-width="4.5" paint-order="stroke">
+    M
+  </text>
+</svg>

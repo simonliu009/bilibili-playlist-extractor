@@ -1,5 +1,78 @@
-// 监听来自background script的消息
-chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+const userSettings = {
+  showDetailedMessage: true,
+  cleanUrl: true
+};
+
+function initializeSettings() {
+  chrome.storage.sync.get(["showDetailedMessage", "cleanUrl"], (result) => {
+    userSettings.showDetailedMessage =
+      result.showDetailedMessage !== undefined ? result.showDetailedMessage : true;
+    userSettings.cleanUrl = result.cleanUrl !== undefined ? result.cleanUrl : true;
+  });
+}
+
+initializeSettings();
+
+chrome.storage.onChanged.addListener((changes) => {
+  if (changes.showDetailedMessage) {
+    userSettings.showDetailedMessage = changes.showDetailedMessage.newValue;
+  }
+  if (changes.cleanUrl) {
+    userSettings.cleanUrl = changes.cleanUrl.newValue;
+  }
+});
+
+let lastMiddleClickTime = 0;
+let middleClickCount = 0;
+const CLICK_THRESHOLD = 300;
+let clickTimer = null;
+
+document.addEventListener(
+  "mouseup",
+  (event) => {
+    if (event.button !== 1) return;
+
+    event.preventDefault();
+
+    try {
+      const currentTime = Date.now();
+      const timeDiff = currentTime - lastMiddleClickTime;
+
+      if (timeDiff < CLICK_THRESHOLD) {
+        middleClickCount++;
+      } else {
+        middleClickCount = 1;
+      }
+
+      if (clickTimer) {
+        clearTimeout(clickTimer);
+      }
+
+      clickTimer = setTimeout(() => {
+        if (middleClickCount === 2) {
+          handleDoubleMiddleClick();
+        } else if (middleClickCount === 3) {
+          handleTripleMiddleClick();
+        }
+
+        middleClickCount = 0;
+        clickTimer = null;
+      }, CLICK_THRESHOLD);
+
+      lastMiddleClickTime = currentTime;
+    } catch (error) {
+      console.error("点击检测失败:", error);
+      middleClickCount = 0;
+      if (clickTimer) {
+        clearTimeout(clickTimer);
+        clickTimer = null;
+      }
+    }
+  },
+  true
+);
+
+chrome.runtime.onMessage.addListener((request) => {
   if (request.action === "getVideoInfo") {
     const bvid = getBvidFromUrl(window.location.href);
     if (bvid) {
@@ -8,103 +81,206 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   }
 });
 
-// 从URL中提取BV号
 function getBvidFromUrl(url) {
   const match = url.match(/BV[0-9A-Za-z]{10}/);
   return match ? match[0] : null;
 }
 
-// URL清洗函数
 function cleanUrl(url) {
   try {
     const urlObj = new URL(url);
-    // 需要移除的参数列表
+
+    if (!urlObj.search) {
+      return url;
+    }
+
     const paramsToRemove = [
-      'spm',
-      'spm_id_from',  // B站特有
-      'vd_source',    // B站特有
-      'utm_source',
-      'utm_medium',
-      'utm_campaign',
-      'utm_term',
-      'utm_content'
+      "spm",
+      "spmid",
+      "spm_id_from",
+      "vd_source",
+      "utm_source",
+      "utm_medium",
+      "utm_campaign",
+      "utm_term",
+      "utm_content",
+      "ops_request_misc",
+      "request_id",
+      "biz_id",
+      "buvid",
+      "from_spmid",
+      "is_story_h5",
+      "mid",
+      "plat_id",
+      "share_from",
+      "share_medium",
+      "share_plat",
+      "share_session_id",
+      "share_source",
+      "share_tag",
+      "timestamp",
+      "unique_k",
+      "up_id"
     ];
-    
-    // 获取所有查询参数
+
     const searchParams = new URLSearchParams(urlObj.search);
-    let hasPromoParam = false;
-    
-    // 找到推广参数在查询字符串中的位置
-    let promoParamIndex = -1;
+    let hasChanged = false;
+
     for (const param of paramsToRemove) {
-      const fullParam = `${param}=`;
-      const index = url.indexOf(fullParam);
-      if (index !== -1 && (url[index - 1] === '?' || url[index - 1] === '&')) {
-        promoParamIndex = index;
-        hasPromoParam = true;
-        break;
+      if (searchParams.has(param)) {
+        searchParams.delete(param);
+        hasChanged = true;
       }
     }
-    
-    // 如果找到推广参数，截取到该参数之前的部分
-    if (hasPromoParam) {
-      const paramStart = url.lastIndexOf('?', promoParamIndex);
-      if (paramStart === promoParamIndex - 1) {
-        // 如果推广参数是第一个参数，直接返回不带参数的URL
-        return url.substring(0, paramStart);
-      } else {
-        // 如果推广参数不是第一个参数，保留之前的参数
-        return url.substring(0, url.lastIndexOf('&', promoParamIndex));
-      }
+
+    if (!hasChanged) {
+      return url;
     }
-    
-    // 如果不存在需要移除的参数，保持原URL不变
-    return url;
-  } catch (e) {
-    console.error('URL清洗失败:', e);
+
+    const remainingParams = searchParams.toString();
+    const baseUrl = url.split("?")[0];
+    return remainingParams ? `${baseUrl}?${remainingParams}` : baseUrl;
+  } catch (error) {
+    console.error("URL清洗失败:", error);
     return url;
   }
 }
 
-// 从页面DOM中提取分集信息
+function getCleanedCurrentUrl() {
+  const currentUrl = window.location.href;
+  return userSettings.cleanUrl ? cleanUrl(currentUrl) : currentUrl;
+}
+
+function getDisplayTextAndMarkdown(title, url, author = "") {
+  const displayText = author ? `${title} - ${author}` : title;
+  const markdownText = `[${displayText}](${url})`;
+  return { displayText, markdownText };
+}
+
+function getPageAuthor() {
+  let author = "";
+
+  const scripts = document.querySelectorAll("script");
+  for (const script of scripts) {
+    if (script.textContent.includes("nickName")) {
+      const nickNameMatch = script.textContent.match(/nickName\s*=\s*"(.*?)"/);
+      if (nickNameMatch && nickNameMatch[1]) {
+        author = nickNameMatch[1];
+        break;
+      }
+    }
+  }
+
+  if (!author) {
+    const metaAuthor =
+      document.querySelector('meta[name="author"]') ||
+      document.querySelector('meta[itemprop="author"]');
+    if (metaAuthor && metaAuthor.content) {
+      author = metaAuthor.content;
+    }
+  }
+
+  return author;
+}
+
+function getUploadDate() {
+  const uploadDateMeta = document.querySelector('meta[itemprop="uploadDate"]');
+  if (!uploadDateMeta || !uploadDateMeta.content) {
+    return "";
+  }
+
+  const dateMatch = uploadDateMeta.content.match(/^(\d{4}-\d{2}-\d{2})/);
+  return dateMatch ? dateMatch[1] : "";
+}
+
+async function handleDoubleMiddleClick() {
+  try {
+    const title = document.title;
+    const url = getCleanedCurrentUrl();
+    const author = getPageAuthor();
+    const uploadDate = getUploadDate();
+
+    const baseTitle = uploadDate ? `${uploadDate} ${title}` : title;
+    const { markdownText } = getDisplayTextAndMarkdown(baseTitle, url, author);
+
+    await copyToClipboard(markdownText);
+
+    const message = userSettings.showDetailedMessage
+      ? `复制成功！\n${markdownText}`
+      : "复制成功！";
+    showMessage(message);
+  } catch (error) {
+    console.error("双击复制失败:", error);
+    showMessage("复制失败！", true);
+  }
+}
+
+async function handleTripleMiddleClick() {
+  try {
+    const url = getCleanedCurrentUrl();
+    await copyToClipboard(url);
+
+    const message = userSettings.showDetailedMessage ? `URL复制成功！\n${url}` : "URL复制成功！";
+    showMessage(message);
+  } catch (error) {
+    console.error("三击复制失败:", error);
+    showMessage("复制失败！", true);
+  }
+}
+
+async function copyToClipboard(text) {
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    await navigator.clipboard.writeText(text);
+    return;
+  }
+
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.setAttribute("readonly", "true");
+  textarea.style.position = "fixed";
+  textarea.style.opacity = "0";
+  const root = document.body || document.documentElement;
+  root.appendChild(textarea);
+  textarea.select();
+
+  const success = document.execCommand("copy");
+  root.removeChild(textarea);
+
+  if (!success) {
+    throw new Error("复制到剪贴板失败");
+  }
+}
+
 function extractEpisodesFromDOM() {
-  // 尝试从页面DOM中提取分集信息
-  const episodeElements = document.querySelectorAll('.video-pod__item[data-key]');
-  
+  const episodeElements = document.querySelectorAll(".video-pod__item[data-key]");
+
   if (episodeElements.length > 0) {
     const episodes = [];
-    episodeElements.forEach(element => {
-      const dataKey = element.getAttribute('data-key');
-      const titleElement = element.querySelector('.title-txt');
-      const title = titleElement ? titleElement.textContent.trim() : '';
-      
+    episodeElements.forEach((element) => {
+      const dataKey = element.getAttribute("data-key");
+      const titleElement = element.querySelector(".title-txt");
+      const title = titleElement ? titleElement.textContent.trim() : "";
+
       if (dataKey && title) {
         episodes.push({
-          bvid: `BV${dataKey}`, // 使用data-key作为BV号的一部分
+          bvid: `BV${dataKey}`,
           title: title,
-          aid: dataKey // 保存原始的aid
+          aid: dataKey
         });
       }
     });
     return episodes;
   }
-  
+
   return null;
 }
 
-// 处理视频信息
 async function processVideoInfo(bvid) {
   try {
-    // 获取专辑名称
     const albumTitleElement = document.querySelector('a.title.jumpable[title]');
-    const albumTitle = albumTitleElement ? albumTitleElement.title : '';
-
-    // 获取作者信息
-    const authorMeta = document.querySelector('meta[name="author"]');
-    const author = authorMeta ? authorMeta.content : '';
-
-    // 构建专辑和作者信息字符串
-    const albumAndAuthor = albumTitle ? `${albumTitle} - ${author}\n` : '';
+    const albumTitle = albumTitleElement ? albumTitleElement.title : "";
+    const author = getPageAuthor();
+    const albumAndAuthor = albumTitle ? `${albumTitle}${author ? ` - ${author}` : ""}\n` : "";
 
     if (albumTitle && author) {
       showMessage(`专辑名称: ${albumTitle}\n作者: ${author}`, false, 3000);
@@ -116,50 +292,39 @@ async function processVideoInfo(bvid) {
       showMessage("未能获取专辑名称或作者信息", true, 3000);
     }
 
-    // 显示加载提示
     showMessage("获取视频信息中...", false, 10000);
 
-    // 首先尝试从DOM中提取分集信息
-    let episodes = extractEpisodesFromDOM();
-    let videoTitle = '';
-    
+    const episodes = extractEpisodesFromDOM();
+
     if (episodes && episodes.length > 0) {
-      // 如果从DOM中成功提取到分集信息，使用DOM数据
-      console.log('使用DOM提取的分集信息:', episodes.length, '个视频');
-      
-      // 获取当前视频标题
-      const titleMeta = document.querySelector('meta[name="title"]');
-      videoTitle = titleMeta ? titleMeta.content : albumTitle || '未知标题';
-      
+      console.log("使用DOM提取的分集信息:", episodes.length, "个视频");
+
       let markdown = albumAndAuthor;
-      let displayMessage = `视频信息已复制到剪贴板！\n\n${albumAndAuthor}`;
-      
-      episodes.forEach(episode => {
-        // 构建视频URL，使用aid作为参数
+      let displayMessage = userSettings.showDetailedMessage
+        ? `视频信息已复制到剪贴板！\n\n${albumAndAuthor}`
+        : "视频信息已复制到剪贴板！";
+
+      episodes.forEach((episode) => {
         const videoUrl = `https://www.bilibili.com/video/BV${episode.aid}`;
         const cleanedUrl = cleanUrl(videoUrl);
         markdown += `- [${episode.title}](${cleanedUrl})\n`;
       });
-      
-      // 生成显示消息
+
       const previewEpisodes = episodes.slice(0, 2);
-      previewEpisodes.forEach(episode => {
+      previewEpisodes.forEach((episode) => {
         displayMessage += `- ${episode.title}\n`;
       });
       if (episodes.length > 2) {
         displayMessage += `...\n共 ${episodes.length} 个视频`;
       }
-      
-      // 复制到剪贴板
-      await navigator.clipboard.writeText(markdown);
+
+      await copyToClipboard(markdown);
       showMessage(displayMessage);
       return;
     }
-    
-    // 如果DOM中没有找到分集信息，回退到API方式
-    console.log('DOM中未找到分集信息，使用API获取');
-    
-    // 获取视频信息
+
+    console.log("DOM中未找到分集信息，使用API获取");
+
     const videoInfo = await chrome.runtime.sendMessage({
       action: "fetchVideoInfo",
       bvid: bvid
@@ -174,65 +339,61 @@ async function processVideoInfo(bvid) {
     let displayMessage = "";
 
     if (videoInfo.episodes) {
-      // 合辑视频 - 去掉标题行
       markdown = albumAndAuthor;
-      videoInfo.episodes.forEach(episode => {
+      videoInfo.episodes.forEach((episode) => {
         const cleanedUrl = cleanUrl(`https://www.bilibili.com/video/${episode.bvid}`);
         markdown += `- [${episode.title}](${cleanedUrl})\n`;
       });
 
-      // 生成显示消息 - 移除标题
       const previewEpisodes = videoInfo.episodes.slice(0, 2);
       if (videoInfo.episodes.length === 0) {
         displayMessage = "该合辑没有视频信息";
       } else {
-        displayMessage = `视频信息已复制到剪贴板！\n\n${albumAndAuthor}`;
+        displayMessage = userSettings.showDetailedMessage
+          ? `视频信息已复制到剪贴板！\n\n${albumAndAuthor}`
+          : "视频信息已复制到剪贴板！";
       }
-      previewEpisodes.forEach(episode => {
+
+      previewEpisodes.forEach((episode) => {
         displayMessage += `- ${episode.title}\n`;
       });
       if (videoInfo.episodes.length > 2) {
         displayMessage += `...\n共 ${videoInfo.episodes.length} 个视频`;
       }
     } else {
-      // 单个视频部分保持不变
       const cleanedUrl = cleanUrl(window.location.href);
-      markdown = `[${videoInfo.title} - ${author}](${cleanedUrl})`;
-      displayMessage = `视频信息已复制到剪贴板！\n\n${markdown}`;
-
+      markdown = `[${videoInfo.title}${author ? ` - ${author}` : ""}](${cleanedUrl})`;
+      displayMessage = userSettings.showDetailedMessage
+        ? `视频信息已复制到剪贴板！\n\n${markdown}`
+        : "视频信息已复制到剪贴板！";
     }
+
+    await copyToClipboard(markdown);
+
     if (displayMessage) {
       showMessage(displayMessage);
     }
-    // else {
-    //   showMessage("未能获取视频信息", true);
-    // }
-    // 复制到剪贴板
-    await navigator.clipboard.writeText(markdown);
-    // showMessage(displayMessage);
   } catch (error) {
-    console.error('处理视频信息失败:', error);
+    console.error("处理视频信息失败:", error);
     showMessage("处理视频信息失败", true);
   }
 }
 
-// 显示消息的函数，添加持续时间参数
 function showMessage(text, isError = false, duration = 5000) {
-  // 移除已存在的消息
-  const existingMessage = document.querySelector('.copy-message');
-  if (existingMessage) {
-    document.body.removeChild(existingMessage);
+  const existingMessage = document.querySelector(".copy-message");
+  if (existingMessage && existingMessage.parentNode) {
+    existingMessage.parentNode.removeChild(existingMessage);
   }
 
-  const message = document.createElement('div');
-  message.className = 'copy-message';  // 添加类名以便查找
+  const message = document.createElement("div");
+  message.className = "copy-message";
   message.style.cssText = `
     position: fixed;
     top: 50%;
     left: 50%;
     transform: translate(-50%, -50%);
-    background-color: ${isError ? '#ffebee' : '#e8f5e9'};
-    color: ${isError ? '#c62828' : '#2e7d32'};
+    background-color: ${isError ? "#ffebee" : "#e8f5e9"};
+    color: ${isError ? "#c62828" : "#2e7d32"};
     padding: 16px 24px;
     border-radius: 8px;
     font-size: 16px;
@@ -242,15 +403,16 @@ function showMessage(text, isError = false, duration = 5000) {
     transition: opacity 0.3s ease-in-out;
     white-space: pre-line;
   `;
-  
+
   message.textContent = text;
-  document.body.appendChild(message);
-  
+  const root = document.body || document.documentElement;
+  root.appendChild(message);
+
   setTimeout(() => {
-    message.style.opacity = '0';
+    message.style.opacity = "0";
     setTimeout(() => {
-      if (document.body.contains(message)) {  // 检查元素是否还存在
-        document.body.removeChild(message);
+      if (root.contains(message)) {
+        root.removeChild(message);
       }
     }, 300);
   }, duration);
