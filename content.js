@@ -86,6 +86,11 @@ function getBvidFromUrl(url) {
   return match ? match[0] : null;
 }
 
+function isBilibiliVideoPage() {
+  const hostname = window.location.hostname;
+  return /(^|\.)bilibili\.com$/i.test(hostname) && Boolean(getBvidFromUrl(window.location.href));
+}
+
 function cleanUrl(url) {
   try {
     const urlObj = new URL(url);
@@ -211,8 +216,7 @@ async function handleDoubleMiddleClick() {
     const url = getCleanedCurrentUrl();
     const author = getPageAuthor();
     const uploadDate = getUploadDate();
-    const bvid = getBvidFromUrl(window.location.href);
-    const description = bvid ? getPageDescription() : "";
+    const description = isBilibiliVideoPage() ? getPageDescription() : "";
 
     const baseTitle = uploadDate ? `${uploadDate} ${title}` : title;
     let { markdownText } = getDisplayTextAndMarkdown(baseTitle, url, author);
