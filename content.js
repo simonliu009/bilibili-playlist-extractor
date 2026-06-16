@@ -335,9 +335,9 @@ async function extractDescFromFetchedPage() {
       if (pivot >= 0) {
         const start = Math.max(0, pivot - 1200);
         const end = Math.min(html.length, pivot + 4000);
-        console.log("[BiliExt] fetched html snippet =", html.slice(start, end));
+        // console.log("[BiliExt] fetched html snippet =", html.slice(start, end));
       } else {
-        console.log("[BiliExt] fetched html snippet =", html.slice(0, 4000));
+        // console.log("[BiliExt] fetched html snippet =", html.slice(0, 4000));
       }
     }
     return extractDescFromText(html, bvid, "fetched html");
