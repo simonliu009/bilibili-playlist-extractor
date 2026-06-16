@@ -193,15 +193,33 @@ function getUploadDate() {
   return dateMatch ? dateMatch[1] : "";
 }
 
+function getPageDescription() {
+  const descriptionMeta =
+    document.querySelector('meta[itemprop="description"]') ||
+    document.querySelector('meta[name="description"]');
+
+  if (!descriptionMeta || !descriptionMeta.content) {
+    return "";
+  }
+
+  return descriptionMeta.content.trim();
+}
+
 async function handleDoubleMiddleClick() {
   try {
     const title = document.title;
     const url = getCleanedCurrentUrl();
     const author = getPageAuthor();
     const uploadDate = getUploadDate();
+    const bvid = getBvidFromUrl(window.location.href);
+    const description = bvid ? getPageDescription() : "";
 
     const baseTitle = uploadDate ? `${uploadDate} ${title}` : title;
-    const { markdownText } = getDisplayTextAndMarkdown(baseTitle, url, author);
+    let { markdownText } = getDisplayTextAndMarkdown(baseTitle, url, author);
+
+    if (description) {
+      markdownText += `\n\n视频描述：\n${description}`;
+    }
 
     await copyToClipboard(markdownText);
 
