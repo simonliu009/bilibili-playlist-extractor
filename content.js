@@ -361,7 +361,7 @@ async function handleDoubleMiddleClick() {
     let { markdownText } = getDisplayTextAndMarkdown(baseTitle, url, author);
 
     if (description) {
-      markdownText += `\n\n视频描述：\n${description}`;
+      markdownText += `\n${description}`;
     }
 
     await copyToClipboard(markdownText);
