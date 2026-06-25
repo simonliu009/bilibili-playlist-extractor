@@ -163,6 +163,27 @@ function getDisplayTextAndMarkdown(title, url, author = "") {
   return { displayText, markdownText };
 }
 
+function getMetaDescription() {
+  const metaDescription =
+    document.querySelector('meta[name="description"]') ||
+    document.querySelector('meta[property="og:description"]') ||
+    document.querySelector('meta[name="twitter:description"]');
+
+  return metaDescription?.content?.trim() || "";
+}
+
+function getPageTitleText() {
+  return document.querySelector("title")?.textContent?.trim() || document.title.trim();
+}
+
+function getMetaKeywords() {
+  return document.querySelector('meta[name="keywords"]')?.content?.trim() || "";
+}
+
+function getFallbackLinkText() {
+  return getMetaDescription() || getPageTitleText() || getMetaKeywords();
+}
+
 function getPageAuthor() {
   let author = "";
 
@@ -351,14 +372,18 @@ async function extractDescFromFetchedPage() {
 
 async function handleDoubleMiddleClick() {
   try {
-    const title = document.title;
+    const title = document.title.trim() || getFallbackLinkText();
     const url = getCleanedCurrentUrl();
     const author = getPageAuthor();
     const uploadDate = getUploadDate();
     const description = isBilibiliVideoPage() ? await getPageDescription() : "";
 
     const baseTitle = uploadDate ? `${uploadDate} ${title}` : title;
-    let { markdownText } = getDisplayTextAndMarkdown(baseTitle, url, author);
+    let { displayText, markdownText } = getDisplayTextAndMarkdown(baseTitle, url, author);
+
+    if (!displayText.trim()) {
+      ({ markdownText } = getDisplayTextAndMarkdown(getFallbackLinkText(), url));
+    }
 
     if (description) {
       markdownText += `\n${description}`;

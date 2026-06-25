@@ -1,0 +1,3 @@
+- 为双击中键复制 Markdown 链接增加空文本回退，避免生成空的链接文本
+- 按 description、title、keywords 的顺序从页面元信息补全链接文本
+- 兼容 og:description 和 twitter:description 作为页面描述来源
